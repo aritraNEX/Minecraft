@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Browser FPS</title>
+
+<style>
+body{margin:0;overflow:hidden;background:black}
+#crosshair{
+position:absolute;
+top:50%;left:50%;
+transform:translate(-50%,-50%);
+color:white;font-size:24px;
+}
+#hud{
+position:absolute;top:10px;left:10px;color:white;
+}
+</style>
+
+</head>
+
+<body>
+
+<div id="crosshair">+</div>
+<div id="hud">HP: <span id="hp">100</span></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.150/build/three.min.js"></script>
+
+<script>
+
+const scene=new THREE.Scene()
+
+const camera=new THREE.PerspectiveCamera(
+75,
+window.innerWidth/window.innerHeight,
+0.1,
+1000
+)
+
+const renderer=new THREE.WebGLRenderer()
+renderer.setSize(window.innerWidth,window.innerHeight)
+document.body.appendChild(renderer.domElement)
+
+scene.add(new THREE.AmbientLight(0xffffff,.6))
+
+const light=new THREE.DirectionalLight(0xffffff,.6)
+light.position.set(20,40,20)
+scene.add(light)
+
+camera.position.set(0,2,5)
+
+const floorGeo=new THREE.PlaneGeometry(100,100)
+const floorMat=new THREE.MeshLambertMaterial({color:0x444444})
+
+const floor=new THREE.Mesh(floorGeo,floorMat)
+floor.rotation.x=-Math.PI/2
+scene.add(floor)
+
+const wallGeo=new THREE.BoxGeometry(100,10,1)
+const wallMat=new THREE.MeshLambertMaterial({color:0x666666})
+
+function wall(x,z,r){
+
+let w=new THREE.Mesh(wallGeo,wallMat)
+w.position.set(x,5,z)
+w.rotation.y=r
+scene.add(w)
+
+}
+
+wall(0,-50,0)
+wall(0,50,0)
+wall(-50,0,Math.PI/2)
+wall(50,0,Math.PI/2)
+
+const player={
+speed:0.15
+}
+
+let hp=100
+
+const enemies=[]
+
+function spawnEnemy(){
+
+const geo=new THREE.BoxGeometry(1,2,1)
+const mat=new THREE.MeshLambertMaterial({color:0xff4444})
+
+let e=new THREE.Mesh(geo,mat)
+
+e.position.set(
+(Math.random()*40)-20,
+1,
+(Math.random()*40)-20
+)
+
+scene.add(e)
+
+e.health=30
+
+enemies.push(e)
+
+}
+
+for(let i=0;i<6;i++) spawnEnemy()
+
+const keys={}
+
+document.addEventListener("keydown",e=>keys[e.key]=true)
+document.addEventListener("keyup",e=>keys[e.key]=false)
+
+function move(){
+
+if(keys["w"]){
+camera.position.x-=Math.sin(camera.rotation.y)*player.speed
+camera.position.z-=Math.cos(camera.rotation.y)*player.speed
+}
+
+if(keys["s"]){
+camera.position.x+=Math.sin(camera.rotation.y)*player.speed
+camera.position.z+=Math.cos(camera.rotation.y)*player.speed
+}
+
+if(keys["a"]){
+camera.position.x-=Math.cos(camera.rotation.y)*player.speed
+camera.position.z+=Math.sin(camera.rotation.y)*player.speed
+}
+
+if(keys["d"]){
+camera.position.x+=Math.cos(camera.rotation.y)*player.speed
+camera.position.z-=Math.sin(camera.rotation.y)*player.speed
+}
+
+}
+
+document.body.addEventListener("click",()=>{
+document.body.requestPointerLock()
+})
+
+document.addEventListener("mousemove",e=>{
+
+if(document.pointerLockElement===document.body){
+
+camera.rotation.y-=e.movementX*0.002
+camera.rotation.x-=e.movementY*0.002
+
+}
+
+})
+
+const raycaster=new THREE.Raycaster()
+
+window.addEventListener("mousedown",()=>{
+
+raycaster.setFromCamera(
+new THREE.Vector2(0,0),
+camera
+)
+
+const hits=raycaster.intersectObjects(enemies)
+
+if(hits.length){
+
+let enemy=hits[0].object
+
+enemy.health-=10
+
+if(enemy.health<=0){
+
+scene.remove(enemy)
+enemies.splice(enemies.indexOf(enemy),1)
+
+spawnEnemy()
+
+}
+
+}
+
+})
+
+function updateEnemies(){
+
+for(let e of enemies){
+
+let dx=camera.position.x-e.position.x
+let dz=camera.position.z-e.position.z
+
+let dist=Math.sqrt(dx*dx+dz*dz)
+
+if(dist>0.5){
+
+e.position.x+=dx/dist*0.03
+e.position.z+=dz/dist*0.03
+
+}
+
+if(dist<1.5){
+
+hp-=0.1
+document.getElementById("hp").innerText=Math.floor(hp)
+
+}
+
+}
+
+}
+
+function animate(){
+
+requestAnimationFrame(animate)
+
+move()
+updateEnemies()
+
+renderer.render(scene,camera)
+
+}
+
+animate()
+
+</script>
+
+</body>
+</html>
