@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Voxel Survival Ultimate</title>
+
+<style>
+
+body{
+margin:0;
+overflow:hidden;
+background:black;
+font-family:sans-serif;
+}
+
+#hud{
+position:absolute;
+top:10px;
+left:10px;
+color:white;
+}
+
+#inventory{
+position:absolute;
+bottom:20px;
+left:50%;
+transform:translateX(-50%);
+display:grid;
+grid-template-columns:repeat(9,60px);
+gap:6px;
+}
+
+.slot{
+width:60px;
+height:60px;
+background:rgba(0,0,0,.6);
+border:2px solid white;
+display:flex;
+align-items:center;
+justify-content:center;
+color:white;
+font-size:22px;
+}
+
+#joystick{
+position:absolute;
+bottom:120px;
+left:40px;
+width:100px;
+height:100px;
+border-radius:50%;
+background:rgba(255,255,255,.1);
+}
+
+#stick{
+position:absolute;
+width:40px;
+height:40px;
+border-radius:50%;
+background:white;
+top:30px;
+left:30px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="hud">
+HP: <span id="hp">100</span><br>
+Food: <span id="food">100</span>
+</div>
+
+<div id="inventory"></div>
+
+<div id="joystick">
+<div id="stick"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.150/build/three.min.js"></script>
+
+<script>
+
+const scene=new THREE.Scene()
+
+const camera=new THREE.PerspectiveCamera(
+75,
+window.innerWidth/window.innerHeight,
+0.1,
+2000
+)
+
+const renderer=new THREE.WebGLRenderer()
+renderer.setSize(window.innerWidth,window.innerHeight)
+document.body.appendChild(renderer.domElement)
+
+const sun=new THREE.DirectionalLight(0xffffff,1)
+sun.position.set(100,200,100)
+scene.add(sun)
+
+scene.add(new THREE.AmbientLight(0xffffff,.4))
+
+const blockGeo=new THREE.BoxGeometry(1,1,1)
+
+const mats={
+grass:new THREE.MeshLambertMaterial({color:0x55aa55}),
+dirt:new THREE.MeshLambertMaterial({color:0x8b5a2b}),
+stone:new THREE.MeshLambertMaterial({color:0x888888}),
+wood:new THREE.MeshLambertMaterial({color:0x8B4513}),
+leaf:new THREE.MeshLambertMaterial({color:0x2E8B57}),
+portal:new THREE.MeshLambertMaterial({color:0x9900ff})
+}
+
+const CHUNK=16
+const DIST=3
+
+const world={}
+const mobs=[]
+const animals=[]
+const redstone=[]
+let blocks=[]
+
+function heightNoise(x,z){
+return Math.floor((Math.sin(x*.1)+Math.cos(z*.1))*4+8)
+}
+
+function caveNoise(x,y,z){
+return Math.sin(x*.2)+Math.cos(z*.2)+Math.sin(y*.3)
+}
+
+function generateChunk(cx,cz){
+
+let key=cx+","+cz
+if(world[key]) return
+
+let group=new THREE.Group()
+
+for(let x=0;x<CHUNK;x++)
+for(let z=0;z<CHUNK;z++){
+
+let wx=cx*CHUNK+x
+let wz=cz*CHUNK+z
+let h=heightNoise(wx,wz)
+
+for(let y=0;y<h;y++){
+
+if(caveNoise(wx,y,wz)>1.2) continue
+
+let mat=y==h-1?mats.grass:mats.dirt
+
+let b=new THREE.Mesh(blockGeo,mat)
+
+b.position.set(wx,y,wz)
+
+group.add(b)
+blocks.push(b)
+
+}
+
+if(Math.random()<0.02) tree(group,wx,h,wz)
+
+if(Math.random()<0.01) village(wx,h,wz)
+
+}
+
+scene.add(group)
+world[key]=group
+
+if(Math.random()<0.2) spawnMob(cx*CHUNK+8,10,cz*CHUNK+8)
+
+if(Math.random()<0.2) spawnAnimal(cx*CHUNK+4,10,cz*CHUNK+4)
+
+}
+
+function unloadChunks(){
+
+let cx=Math.floor(camera.position.x/CHUNK)
+let cz=Math.floor(camera.position.z/CHUNK)
+
+for(let key in world){
+
+let [x,z]=key.split(",").map(Number)
+
+if(Math.abs(x-cx)>DIST || Math.abs(z-cz)>DIST){
+
+scene.remove(world[key])
+delete world[key]
+
+}
+
+}
+
+}
+
+function updateWorld(){
+
+let cx=Math.floor(camera.position.x/CHUNK)
+let cz=Math.floor(camera.position.z/CHUNK)
+
+for(let x=-DIST;x<=DIST;x++)
+for(let z=-DIST;z<=DIST;z++)
+generateChunk(cx+x,cz+z)
+
+unloadChunks()
+
+}
+
+function tree(group,x,y,z){
+
+for(let i=0;i<4;i++){
+
+let t=new THREE.Mesh(blockGeo,mats.wood)
+t.position.set(x,y+i,z)
+group.add(t)
+
+}
+
+for(let dx=-2;dx<=2;dx++)
+for(let dz=-2;dz<=2;dz++)
+for(let dy=3;dy<=5;dy++){
+
+if(Math.random()>.5){
+
+let l=new THREE.Mesh(blockGeo,mats.leaf)
+l.position.set(x+dx,y+dy,z+dz)
+group.add(l)
+
+}
+
+}
+
+}
+
+function village(x,y,z){
+
+for(let i=0;i<5;i++){
+
+let house=new THREE.Mesh(blockGeo,mats.wood)
+house.scale.set(4,4,4)
+
+house.position.set(x+i*5,y+2,z)
+
+scene.add(house)
+
+}
+
+}
+
+function spawnMob(x,y,z){
+
+let g=new THREE.BoxGeometry(1,2,1)
+let m=new THREE.MeshLambertMaterial({color:0xff4444})
+
+let mob=new THREE.Mesh(g,m)
+mob.position.set(x,y,z)
+
+scene.add(mob)
+mobs.push(mob)
+
+}
+
+function spawnAnimal(x,y,z){
+
+let g=new THREE.BoxGeometry(1.5,1,1)
+let m=new THREE.MeshLambertMaterial({color:0xffffff})
+
+let cow=new THREE.Mesh(g,m)
+
+cow.position.set(x,y,z)
+
+scene.add(cow)
+animals.push(cow)
+
+}
+
+function updateEntities(){
+
+for(let m of mobs){
+
+m.position.x+=Math.sin(Date.now()*.001)*.02
+m.position.z+=Math.cos(Date.now()*.001)*.02
+
+if(m.position.distanceTo(camera.position)<2){
+
+hp-=.1
+document.getElementById("hp").innerText=Math.floor(hp)
+
+}
+
+}
+
+for(let a of animals){
+
+a.position.x+=Math.sin(Date.now()*.0005)*.01
+
+}
+
+}
+
+function createPortal(x,y,z){
+
+let p=new THREE.Mesh(blockGeo,mats.portal)
+p.scale.set(2,4,1)
+p.position.set(x,y,z)
+
+scene.add(p)
+
+redstone.push(p)
+
+}
+
+let hp=100
+let food=100
+
+setInterval(()=>{
+
+food--
+
+document.getElementById("food").innerText=food
+
+if(food<=0) hp--
+
+},3000)
+
+camera.position.set(0,15,10)
+
+let velY=0
+let grounded=false
+
+const keys={}
+
+document.addEventListener("keydown",e=>keys[e.key]=true)
+document.addEventListener("keyup",e=>keys[e.key]=false)
+
+function move(){
+
+let s=.2
+
+if(keys["w"]) camera.position.z-=s
+if(keys["s"]) camera.position.z+=s
+if(keys["a"]) camera.position.x-=s
+if(keys["d"]) camera.position.x+=s
+
+if(keys[" "] && grounded){
+
+velY=.25
+grounded=false
+
+}
+
+}
+
+function physics(){
+
+velY-=.01
+camera.position.y+=velY
+
+if(camera.position.y<12){
+
+camera.position.y=12
+velY=0
+grounded=true
+
+}
+
+}
+
+let time=0
+
+function dayNight(){
+
+time+=.001
+
+sun.position.x=Math.sin(time)*200
+sun.position.y=Math.cos(time)*200
+
+}
+
+const inv=document.getElementById("inventory")
+
+for(let i=0;i<27;i++){
+
+let slot=document.createElement("div")
+slot.className="slot"
+
+inv.appendChild(slot)
+
+}
+
+function animate(){
+
+requestAnimationFrame(animate)
+
+move()
+physics()
+updateWorld()
+updateEntities()
+dayNight()
+
+renderer.render(scene,camera)
+
+}
+
+animate()
+
+</script>
+
+</body>
+  </html>
